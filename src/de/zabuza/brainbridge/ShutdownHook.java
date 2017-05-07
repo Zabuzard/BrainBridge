@@ -30,6 +30,8 @@ public final class ShutdownHook extends Thread {
 	 */
 	@Override
 	public void run() {
-		this.mParent.shutdown();
+		if (!this.mParent.wasShutdown()) {
+			this.mParent.shutdown();
+		}
 	}
 }

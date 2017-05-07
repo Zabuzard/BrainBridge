@@ -7,10 +7,19 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
+import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebDriver;
 
 import de.zabuza.brainbridge.BrainBridge;
+import de.zabuza.brainbridge.exceptions.DriverNewWindowUnsupportedException;
+import de.zabuza.brainbridge.exceptions.WindowHandleNotFoundException;
 import de.zabuza.brainbridge.logging.ILogger;
 import de.zabuza.brainbridge.logging.LoggerFactory;
 import de.zabuza.brainbridge.logging.LoggerUtil;
@@ -25,10 +34,46 @@ import de.zabuza.brainbridge.logging.LoggerUtil;
  */
 public final class Service extends Thread {
 	/**
+	 * Time after when an instance is declared as abandoned and will get
+	 * automatically shutdown.
+	 */
+	private final static long ABANDONED_INSTANCE_INTERVAL = 60_000L;
+	/**
+	 * The pattern which matches the id argument in a request. It can be
+	 * accessed by the group 1.
+	 */
+	private static final String ARGUMENT_ID_PATTERN = "(?:^|.+&)id=([A-Za-z0-9]+)(?:$|&.+)";
+	/**
+	 * The pattern which matches the message argument in a request. It can be
+	 * accessed by the group 1.
+	 */
+	private static final String ARGUMENT_MESSAGE_PATTERN = "(?:^|.+&)msg=.+(?:$|&.+)";
+	/**
+	 * The keyword which every create request begins with.
+	 */
+	private static final String CREATE_REQUEST = "/create";
+	/**
+	 * The keyword which every get message request begins with.
+	 */
+	private static final String GET_MESSAGE_REQUEST = "/get?";
+	/**
+	 * The pattern which every GET request matches. Group 1 holds the content of
+	 * the GET request.
+	 */
+	private static final String GET_REQUEST_PATTERN = "GET (.+) HTTP/?[\\d\\.]*";
+	/**
+	 * The keyword which every post message request begins with.
+	 */
+	private static final String POST_MESSAGE_REQUEST = "/post?";
+	/**
 	 * The time in milliseconds to wait for the next iteration of the life
 	 * cycle.
 	 */
-	private final static long SERVICE_INTERVAL = 200;
+	private final static long SERVICE_INTERVAL = 200L;
+	/**
+	 * The keyword which every shutdown request begins with.
+	 */
+	private static final String SHUTDOWN_REQUEST = "/shutdown?";
 	/**
 	 * The time in milliseconds to wait for a client to connect.
 	 */
@@ -43,6 +88,10 @@ public final class Service extends Thread {
 	 * The driver to use for accessing browsers contents.
 	 */
 	private final WebDriver mDriver;
+	/**
+	 * Data-structure that maps ids to their corresponding brain instances.
+	 */
+	private final Map<String, BrainInstance> mIdToBrainInstance;
 	/**
 	 * The logger to use for logging.
 	 */
@@ -65,6 +114,10 @@ public final class Service extends Thread {
 	 * service will try to leave its life cycle in a normal way and shutdown.
 	 */
 	private boolean mShouldStopService;
+	/**
+	 * Set that contains all assigned window handles.
+	 */
+	private final Set<String> mWindowHandles;
 
 	/**
 	 * Creates a new Service instance. Call {@link #start()} to start the
@@ -88,6 +141,9 @@ public final class Service extends Thread {
 
 		this.mDoRun = true;
 		this.mShouldStopService = false;
+
+		this.mWindowHandles = new HashSet<>();
+		this.mIdToBrainInstance = new HashMap<>();
 	}
 
 	/**
@@ -125,15 +181,19 @@ public final class Service extends Thread {
 					this.mDoRun = false;
 				}
 
+				// Clean up abandoned instances
+				cleanAbandonedInstance();
+
 				// Wait for a client to connect
 				try (final Socket clientSocket = this.mServerSocket.accept();
 						final BufferedReader br = new BufferedReader(
 								new InputStreamReader(clientSocket.getInputStream()))) {
 					final InetAddress clientIp = clientSocket.getInetAddress();
 					this.mLogger.logInfo("Connected with " + clientIp);
-					final String request = br.readLine();
 
-					// TODO Serve request
+					// Serve the request
+					final String request = br.readLine();
+					serveRequest(request, clientSocket);
 				} catch (final SocketTimeoutException e) {
 					// Ignore the exception and continue with the next iteration
 				} catch (final IOException e) {
@@ -169,16 +229,252 @@ public final class Service extends Thread {
 	}
 
 	/**
-	 * Waits a given time before executing the next iteration of the services
-	 * life cycle.
+	 * Shuts abandoned instances down and removes them from the pool.
 	 */
-	public void waitToNextIteration() {
-		try {
-			sleep(SERVICE_INTERVAL);
-		} catch (final InterruptedException e) {
-			// Log the error but continue
-			this.mLogger.logError("Service wait got interrupted: " + LoggerUtil.getStackTrace(e));
+	private void cleanAbandonedInstance() {
+		final long timeNow = System.currentTimeMillis();
+		final Set<String> idsToRemove = new HashSet<>();
+		for (final BrainInstance instance : this.mIdToBrainInstance.values()) {
+			if (timeNow - instance.getLastUsage() > ABANDONED_INSTANCE_INTERVAL) {
+				// Instance is abandoned
+				final String id = instance.getId();
+				final String windowHandle = instance.getWindowHandle();
+
+				// Shut it down
+				instance.shutdown();
+				this.mWindowHandles.remove(windowHandle);
+				idsToRemove.add(id);
+			}
 		}
+
+		for (final String id : idsToRemove) {
+			this.mIdToBrainInstance.remove(id);
+		}
+	}
+
+	/**
+	 * Serves the given create request of the given client
+	 * 
+	 * @param clientSocket
+	 *            Client to serve
+	 * @throws WindowHandleNotFoundException
+	 *             If a window handle could not be found
+	 * @throws IOException
+	 *             If an I/O-Exception occurs
+	 */
+	private void serveCreateRequest(final Socket clientSocket) throws WindowHandleNotFoundException, IOException {
+		// Create a window handle for a new brain instance
+		String windowHandle = null;
+		if (this.mWindowHandles.isEmpty()) {
+			// Use the default blank window
+			windowHandle = this.mDriver.getWindowHandle();
+			this.mWindowHandles.add(windowHandle);
+		} else {
+			// Create a new blank window
+			if (!(this.mDriver instanceof JavascriptExecutor)) {
+				throw new DriverNewWindowUnsupportedException(this.mDriver);
+			}
+			final JavascriptExecutor executor = (JavascriptExecutor) this.mDriver;
+			executor.executeScript("window.open();");
+
+			// Find the window
+			for (final String windowHandleCandidate : this.mDriver.getWindowHandles()) {
+				if (!this.mWindowHandles.contains(windowHandleCandidate)) {
+					windowHandle = windowHandleCandidate;
+					this.mWindowHandles.add(windowHandleCandidate);
+					break;
+				}
+			}
+
+			if (windowHandle == null) {
+				throw new WindowHandleNotFoundException();
+			}
+		}
+
+		// Create a new brain instance
+		final BrainInstance instance = new BrainInstance(this.mDriver, windowHandle);
+		instance.initialize();
+		final String id = instance.getId();
+		this.mIdToBrainInstance.put(id, instance);
+
+		HttpUtil.sendHttpAnswer(id, EHttpContentType.TEXT, EHttpStatus.OK, clientSocket);
+	}
+
+	/**
+	 * Serves the given get message request of the given client.
+	 * 
+	 * @param requestContent
+	 *            The content of the request
+	 * @param clientSocket
+	 *            The client to serve
+	 * @throws IOException
+	 *             If an I/O-Exception occurs
+	 */
+	private void serveGetMessageRequest(final String requestContent, final Socket clientSocket) throws IOException {
+		// Extract the arguments
+		final String arguments = requestContent.substring(GET_MESSAGE_REQUEST.length());
+
+		// Id Argument
+		final Pattern idPattern = Pattern.compile(ARGUMENT_ID_PATTERN);
+		final Matcher idMatcher = idPattern.matcher(arguments);
+		if (!idMatcher.matches()) {
+			HttpUtil.sendError(EHttpStatus.BAD_REQUEST, clientSocket);
+		}
+		final String id = idMatcher.group(1);
+
+		if (!this.mIdToBrainInstance.containsKey(id)) {
+			HttpUtil.sendError(EHttpStatus.NOT_FOUND, clientSocket);
+		}
+
+		// Get the brain instance corresponding to the requested id
+		final BrainInstance instance = this.mIdToBrainInstance.get(id);
+		String latestAnswer = instance.getLatestAnswer();
+		if (latestAnswer == null) {
+			latestAnswer = "";
+		}
+
+		HttpUtil.sendHttpAnswer(latestAnswer, EHttpContentType.TEXT, EHttpStatus.OK, clientSocket);
+	}
+
+	/**
+	 * Serves the given post message request of the given client.
+	 * 
+	 * @param requestContent
+	 *            The content of the request
+	 * @param clientSocket
+	 *            The client to serve
+	 * @throws IOException
+	 *             If an I/O-Exception occurs
+	 */
+	private void servePostMessageRequest(final String requestContent, final Socket clientSocket) throws IOException {
+		// Extract the arguments
+		final String arguments = requestContent.substring(POST_MESSAGE_REQUEST.length());
+
+		// Id Argument
+		final Pattern idPattern = Pattern.compile(ARGUMENT_ID_PATTERN);
+		final Matcher idMatcher = idPattern.matcher(arguments);
+		if (!idMatcher.matches()) {
+			HttpUtil.sendError(EHttpStatus.BAD_REQUEST, clientSocket);
+		}
+		final String id = idMatcher.group(1);
+
+		// Message argument
+		final Pattern messagePattern = Pattern.compile(ARGUMENT_MESSAGE_PATTERN);
+		final Matcher messageMatcher = messagePattern.matcher(arguments);
+		if (!messageMatcher.matches()) {
+			HttpUtil.sendError(EHttpStatus.BAD_REQUEST, clientSocket);
+		}
+		final String message = messageMatcher.group(1);
+
+		if (!this.mIdToBrainInstance.containsKey(id)) {
+			HttpUtil.sendError(EHttpStatus.NOT_FOUND, clientSocket);
+		}
+
+		// Get the brain instance corresponding to the requested id
+		final BrainInstance instance = this.mIdToBrainInstance.get(id);
+		instance.postMessage(message);
+
+		HttpUtil.sendHttpAnswer(EHttpContentType.TEXT, EHttpStatus.NO_CONTENT, clientSocket);
+	}
+
+	/**
+	 * Serves the given request of the given client.
+	 * 
+	 * @param request
+	 *            The request to serve
+	 * @param clientSocket
+	 *            The client to serve
+	 * @throws IOException
+	 *             If an I/O-Exception occurs
+	 * @throws WindowHandleNotFoundException
+	 *             If a window handle could not be found
+	 */
+	private void serveRequest(final String request, final Socket clientSocket)
+			throws IOException, WindowHandleNotFoundException {
+		// Reject the request if empty
+		if (request == null || request.trim().length() <= 0) {
+			HttpUtil.sendError(EHttpStatus.BAD_REQUEST, clientSocket);
+			return;
+		}
+
+		// Reject the request if not a GET request
+		final Pattern requestPattern = Pattern.compile(GET_REQUEST_PATTERN);
+		final Matcher requestMatcher = requestPattern.matcher(request);
+		if (!requestMatcher.matches()) {
+			HttpUtil.sendError(EHttpStatus.BAD_REQUEST, clientSocket);
+			return;
+		}
+
+		// Strip the content of the GET request
+		final String requestContent = requestMatcher.group(1);
+
+		// Serve create requests
+		final boolean isCreateRequest = requestContent.startsWith(CREATE_REQUEST);
+		if (isCreateRequest) {
+			serveCreateRequest(clientSocket);
+			return;
+		}
+
+		// Serve post message requests
+		final boolean isPostMessageRequest = requestContent.startsWith(POST_MESSAGE_REQUEST);
+		if (isPostMessageRequest) {
+			servePostMessageRequest(requestContent, clientSocket);
+			return;
+		}
+
+		// Serve get message requests
+		final boolean isGetMessageRequest = requestContent.startsWith(GET_MESSAGE_REQUEST);
+		if (isGetMessageRequest) {
+			serveGetMessageRequest(requestContent, clientSocket);
+			return;
+		}
+
+		// Serve shutdown requests
+		final boolean isShutdownRequest = requestContent.startsWith(SHUTDOWN_REQUEST);
+		if (isShutdownRequest) {
+			serveShutdownRequest(requestContent, clientSocket);
+			return;
+		}
+
+		// Request type not supported
+		HttpUtil.sendError(EHttpStatus.NOT_IMPLEMENTED, clientSocket);
+	}
+
+	/**
+	 * Serves the given shutdown request of the given client.
+	 * 
+	 * @param requestContent
+	 *            The content of the request
+	 * @param clientSocket
+	 *            The client to serve
+	 * @throws IOException
+	 *             If an I/O-Exception occurs
+	 */
+	private void serveShutdownRequest(final String requestContent, final Socket clientSocket) throws IOException {
+		// Extract the arguments
+		final String arguments = requestContent.substring(SHUTDOWN_REQUEST.length());
+
+		// Id Argument
+		final Pattern idPattern = Pattern.compile(ARGUMENT_ID_PATTERN);
+		final Matcher idMatcher = idPattern.matcher(arguments);
+		if (!idMatcher.matches()) {
+			HttpUtil.sendError(EHttpStatus.BAD_REQUEST, clientSocket);
+		}
+		final String id = idMatcher.group(1);
+
+		if (!this.mIdToBrainInstance.containsKey(id)) {
+			HttpUtil.sendError(EHttpStatus.NOT_FOUND, clientSocket);
+		}
+
+		// Get the brain instance corresponding to the requested id
+		final BrainInstance instance = this.mIdToBrainInstance.get(id);
+		final String windowHandle = instance.getWindowHandle();
+
+		instance.shutdown();
+		this.mWindowHandles.remove(windowHandle);
+		this.mIdToBrainInstance.remove(id);
+
+		HttpUtil.sendHttpAnswer(EHttpContentType.TEXT, EHttpStatus.NO_CONTENT, clientSocket);
 	}
 
 	/**
@@ -192,6 +488,19 @@ public final class Service extends Thread {
 		} catch (final Exception e) {
 			// Log the error but continue
 			this.mLogger.logError("Error while shutting down driver: " + LoggerUtil.getStackTrace(e));
+		}
+	}
+
+	/**
+	 * Waits a given time before executing the next iteration of the services
+	 * life cycle.
+	 */
+	private void waitToNextIteration() {
+		try {
+			sleep(SERVICE_INTERVAL);
+		} catch (final InterruptedException e) {
+			// Log the error but continue
+			this.mLogger.logError("Service wait got interrupted: " + LoggerUtil.getStackTrace(e));
 		}
 	}
 }

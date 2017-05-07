@@ -1,6 +1,11 @@
 package de.zabuza.brainbridge;
 
+import java.awt.AWTException;
+import java.awt.Image;
 import java.io.File;
+import java.io.IOException;
+
+import javax.imageio.ImageIO;
 
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.chrome.ChromeDriver;
@@ -22,6 +27,7 @@ import de.zabuza.brainbridge.logging.LoggerUtil;
 import de.zabuza.brainbridge.service.Service;
 import de.zabuza.brainbridge.settings.IBrowserSettingsProvider;
 import de.zabuza.brainbridge.settings.SettingsController;
+import de.zabuza.brainbridge.tray.TrayManager;
 import de.zabuza.brainbridge.webdriver.EBrowser;
 import de.zabuza.brainbridge.webdriver.StaleRefresherWebDriver;
 
@@ -38,6 +44,11 @@ public final class BrainBridge {
 	 * The default port to use.
 	 */
 	private static final int DEFAULT_PORT = 8110;
+
+	/**
+	 * The file path to the image of the icon to use.
+	 */
+	private static final String IMAGE_PATH_ICON = "res/img/icon.png";
 
 	/**
 	 * Starts the BrainBridge service and ensures that all thrown and not caught
@@ -248,20 +259,32 @@ public final class BrainBridge {
 	 * The driver to use for interaction with the browser.
 	 */
 	private WebDriver mDriver;
+
+	/**
+	 * The image of the icon to use.
+	 */
+	private Image mIconImage;
 	/**
 	 * The logger to use for logging.
 	 */
 	private final ILogger mLogger;
-
 	/**
 	 * The main service of the tool.
 	 */
 	private Service mService;
-
 	/**
 	 * The controller of the settings.
 	 */
 	private final SettingsController mSettingsController;
+
+	/**
+	 * The tray manager to use which manages the tray icon of the tool.
+	 */
+	private TrayManager mTrayManager;
+	/**
+	 * Whether the tool was shutdown using {@link #shutdown()}.
+	 */
+	private boolean mWasShutdown;
 
 	/**
 	 * Creates a new instance of the service. After creation call
@@ -270,22 +293,33 @@ public final class BrainBridge {
 	 * 
 	 */
 	public BrainBridge() {
+		this.mTrayManager = null;
 		this.mService = null;
 		this.mSettingsController = new SettingsController();
 		this.mLogger = LoggerFactory.getLogger();
+		this.mWasShutdown = false;
 	}
 
 	/**
 	 * Initializes the service. Call this method prior to {@link #start()}.
+	 * 
+	 * @throws IOException
+	 *             If an I/O-Exception occurs when reading the icon image
+	 * @throws AWTException
+	 *             If the desktop system tray is missing
 	 */
-	public void initialize() {
+	public void initialize() throws IOException, AWTException {
 		if (this.mLogger.isDebugEnabled()) {
 			this.mLogger.logDebug("Initializing BrainBridge");
 		}
-		this.mSettingsController.initialize();
-
 		// Add shutdown hook for a controlled shutdown when killed
 		Runtime.getRuntime().addShutdownHook(new ShutdownHook(this));
+
+		this.mSettingsController.initialize();
+
+		this.mIconImage = ImageIO.read(new File(IMAGE_PATH_ICON));
+		this.mTrayManager = new TrayManager(this, this.mIconImage);
+		this.mTrayManager.addTrayIcon();
 	}
 
 	/**
@@ -304,6 +338,16 @@ public final class BrainBridge {
 		} catch (final Exception e) {
 			this.mLogger.logError("Error while stopping: " + LoggerUtil.getStackTrace(e));
 		}
+
+		if (this.mTrayManager != null) {
+			try {
+				this.mTrayManager.removeTrayIcon();
+			} catch (final Exception e) {
+				this.mLogger.logError("Error while removing tray icon: " + LoggerUtil.getStackTrace(e));
+			}
+		}
+
+		this.mWasShutdown = true;
 
 		this.mLogger.logInfo("BrainBridge shutdown");
 		this.mLogger.close();
@@ -373,6 +417,16 @@ public final class BrainBridge {
 		} catch (final Exception e) {
 			this.mLogger.logError("Error while stopping service: " + LoggerUtil.getStackTrace(e));
 		}
+	}
+
+	/**
+	 * Whether the tool was shutdown using {@link #shutdown()}. If it was it
+	 * should not be used anymore.
+	 * 
+	 * @return <tt>True</tt> if the tool was shutdown, <tt>false</tt> if not
+	 */
+	public boolean wasShutdown() {
+		return this.mWasShutdown;
 	}
 
 	/**

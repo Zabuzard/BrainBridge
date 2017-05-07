@@ -57,7 +57,7 @@ public final class HtmlLogger implements ILogger {
 	 * The maximal size of the logging file, i.e. the amount of messages when
 	 * the logger deletes old messages.
 	 */
-	private static final int LOG_MESSAGES_MAX = 10_000;
+	private static final int LOG_MESSAGES_MAX = 2_000;
 	/**
 	 * The value to use for separating log messages.
 	 */
