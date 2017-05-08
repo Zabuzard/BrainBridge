@@ -2,9 +2,13 @@ package de.zabuza.brainbridge.service;
 
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.net.Socket;
+import java.net.URLDecoder;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+
+import de.zabuza.brainbridge.exceptions.UnexpectedUnsupportedEncodingException;
 
 /**
  * Utility class that provides methods for the hyper text transfer protocol
@@ -24,6 +28,23 @@ public final class HttpUtil {
 	 * The charset to use for encoding and decoding text.
 	 */
 	private static final Charset TEXT_CHARSET = StandardCharsets.UTF_8;
+
+	/**
+	 * Decodes the given encoded URL into an UTF-8 text.
+	 * 
+	 * @param encodedUrl
+	 *            The encoded URL to decode
+	 * @return The given URL decoded into an UTF-8 text
+	 * @throws UnexpectedUnsupportedEncodingException
+	 *             If the UTF-8 char-set is unexpectedly not supported
+	 */
+	public static String decodeUrlToUtf8(final String encodedUrl) throws UnexpectedUnsupportedEncodingException {
+		try {
+			return URLDecoder.decode(encodedUrl, TEXT_CHARSET.displayName());
+		} catch (final UnsupportedEncodingException e) {
+			throw new UnexpectedUnsupportedEncodingException(e);
+		}
+	}
 
 	/**
 	 * Sends an error answer with the given status to the given client by using
@@ -135,7 +156,7 @@ public final class HttpUtil {
 		final StringBuilder answer = new StringBuilder();
 		answer.append("HTTP/1.0 " + statusNumber + " " + statusToUse + nextLine);
 		answer.append("Content-Length: " + answerTextAsBytes.length + nextLine);
-		answer.append("Content-Type: " + contentTypeText + ", charset=" + charset + nextLine);
+		answer.append("Content-Type: " + contentTypeText + "; charset=" + charset + nextLine);
 		answer.append("Connection: close" + nextLine);
 		answer.append(nextLine);
 		answer.append(answerTextToUse);

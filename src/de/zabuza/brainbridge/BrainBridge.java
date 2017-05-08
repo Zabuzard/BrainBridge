@@ -8,18 +8,13 @@ import java.io.IOException;
 import javax.imageio.ImageIO;
 
 import org.openqa.selenium.WebDriver;
-import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
-import org.openqa.selenium.edge.EdgeDriver;
 import org.openqa.selenium.firefox.FirefoxBinary;
 import org.openqa.selenium.firefox.FirefoxDriver;
 import org.openqa.selenium.firefox.FirefoxOptions;
 import org.openqa.selenium.firefox.FirefoxProfile;
 import org.openqa.selenium.firefox.internal.ProfilesIni;
-import org.openqa.selenium.ie.InternetExplorerDriver;
-import org.openqa.selenium.opera.OperaDriver;
 import org.openqa.selenium.remote.DesiredCapabilities;
-import org.openqa.selenium.safari.SafariDriver;
 
 import de.zabuza.brainbridge.logging.ILogger;
 import de.zabuza.brainbridge.logging.LoggerFactory;
@@ -213,36 +208,6 @@ public final class BrainBridge {
 				driver = new FirefoxDriver(capabilities);
 			} else {
 				driver = new FirefoxDriver();
-			}
-		} else if (browser == EBrowser.CHROME) {
-			if (capabilities != null) {
-				driver = new ChromeDriver(capabilities);
-			} else {
-				driver = new ChromeDriver();
-			}
-		} else if (browser == EBrowser.SAFARI) {
-			if (capabilities != null) {
-				driver = new SafariDriver(capabilities);
-			} else {
-				driver = new SafariDriver();
-			}
-		} else if (browser == EBrowser.INTERNET_EXPLORER) {
-			if (capabilities != null) {
-				driver = new InternetExplorerDriver(capabilities);
-			} else {
-				driver = new InternetExplorerDriver();
-			}
-		} else if (browser == EBrowser.OPERA) {
-			if (capabilities != null) {
-				driver = new OperaDriver(capabilities);
-			} else {
-				driver = new OperaDriver();
-			}
-		} else if (browser == EBrowser.MS_EDGE) {
-			if (capabilities != null) {
-				driver = new EdgeDriver(capabilities);
-			} else {
-				driver = new EdgeDriver();
 			}
 		} else {
 			throw new IllegalArgumentException("The given browser is not supported: " + browser);

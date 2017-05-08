@@ -11,14 +11,20 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.openqa.selenium.JavascriptExecutor;
+import org.openqa.selenium.NoSuchElementException;
+import org.openqa.selenium.NoSuchFrameException;
+import org.openqa.selenium.StaleElementReferenceException;
+import org.openqa.selenium.TimeoutException;
 import org.openqa.selenium.WebDriver;
 
 import de.zabuza.brainbridge.BrainBridge;
 import de.zabuza.brainbridge.exceptions.DriverNewWindowUnsupportedException;
+import de.zabuza.brainbridge.exceptions.UnexpectedUnsupportedEncodingException;
 import de.zabuza.brainbridge.exceptions.WindowHandleNotFoundException;
 import de.zabuza.brainbridge.logging.ILogger;
 import de.zabuza.brainbridge.logging.LoggerFactory;
@@ -36,9 +42,9 @@ import de.zabuza.brainbridge.webdriver.IWrapsWebDriver;
 public final class Service extends Thread {
 	/**
 	 * Time after when an instance is declared as abandoned and will get
-	 * automatically shutdown.
+	 * automatically shutdown in milliseconds.
 	 */
-	private final static long ABANDONED_INSTANCE_INTERVAL = 60_000L;
+	private final static long ABANDONED_INSTANCE_INTERVAL = 300_000L;
 	/**
 	 * The pattern which matches the id argument in a request. It can be
 	 * accessed by the group 1.
@@ -53,6 +59,11 @@ public final class Service extends Thread {
 	 * The keyword which every create request begins with.
 	 */
 	private static final String CREATE_REQUEST = "/create";
+	/**
+	 * Time in seconds a driver waits for a page to fully load until throwing a
+	 * {@link TimeoutException}.
+	 */
+	private final static int DRIVER_PAGE_LOAD_TIMEOUT = 3;
 	/**
 	 * The keyword which every get message request begins with.
 	 */
@@ -85,6 +96,10 @@ public final class Service extends Thread {
 	 */
 	private final static int SOCKET_WAIT_TIMEOUT = 10_000;
 
+	/**
+	 * The unique window handle for the blank control window.
+	 */
+	private String mControlWindowHandle;
 	/**
 	 * Internal flag whether the service should run or not. If set to
 	 * <tt>false</tt> the service will not enter the next iteration of its life
@@ -151,6 +166,7 @@ public final class Service extends Thread {
 
 		this.mWindowHandles = new HashSet<>();
 		this.mIdToBrainInstance = new HashMap<>();
+		this.mControlWindowHandle = null;
 	}
 
 	/**
@@ -174,6 +190,11 @@ public final class Service extends Thread {
 		try {
 			this.mServerSocket = new ServerSocket(this.mPort);
 			this.mServerSocket.setSoTimeout(SOCKET_WAIT_TIMEOUT);
+
+			this.mDriver.manage().timeouts().pageLoadTimeout(DRIVER_PAGE_LOAD_TIMEOUT, TimeUnit.SECONDS);
+
+			this.mControlWindowHandle = this.mDriver.getWindowHandle();
+			this.mWindowHandles.add(this.mControlWindowHandle);
 		} catch (final Exception e) {
 			// Do not enter the service loop
 			this.mLogger.logError("Error while starting service, not entering: " + LoggerUtil.getStackTrace(e));
@@ -283,45 +304,51 @@ public final class Service extends Thread {
 
 		// Create a window handle for a new brain instance
 		String windowHandle = null;
-		if (this.mWindowHandles.isEmpty()) {
-			// Use the default blank window
-			windowHandle = this.mDriver.getWindowHandle();
-			this.mWindowHandles.add(windowHandle);
-		} else {
-			// Create a new blank window
-			WebDriver rawDriver = this.mDriver;
-			while (rawDriver instanceof IWrapsWebDriver) {
-				rawDriver = ((IWrapsWebDriver) rawDriver).getRawDriver();
-			}
 
-			if (!(rawDriver instanceof JavascriptExecutor)) {
-				throw new DriverNewWindowUnsupportedException(rawDriver);
-			}
-			final JavascriptExecutor executor = (JavascriptExecutor) rawDriver;
-			executor.executeScript("window.open();");
+		// Create a new blank window
+		WebDriver rawDriver = this.mDriver;
+		while (rawDriver instanceof IWrapsWebDriver) {
+			rawDriver = ((IWrapsWebDriver) rawDriver).getRawDriver();
+		}
 
-			// Find the window
-			for (final String windowHandleCandidate : this.mDriver.getWindowHandles()) {
-				if (!this.mWindowHandles.contains(windowHandleCandidate)) {
-					windowHandle = windowHandleCandidate;
-					this.mWindowHandles.add(windowHandleCandidate);
-					break;
-				}
-			}
+		if (!(rawDriver instanceof JavascriptExecutor)) {
+			throw new DriverNewWindowUnsupportedException(rawDriver);
+		}
+		final JavascriptExecutor executor = (JavascriptExecutor) rawDriver;
+		this.mDriver.switchTo().window(this.mControlWindowHandle);
+		executor.executeScript("window.open();");
 
-			if (windowHandle == null) {
-				throw new WindowHandleNotFoundException();
+		// Find the window
+		for (final String windowHandleCandidate : this.mDriver.getWindowHandles()) {
+			if (!this.mWindowHandles.contains(windowHandleCandidate)) {
+				windowHandle = windowHandleCandidate;
+				this.mWindowHandles.add(windowHandleCandidate);
+				break;
 			}
+		}
+
+		if (windowHandle == null) {
+			throw new WindowHandleNotFoundException();
 		}
 
 		// Create a new brain instance
 		final BrainInstance instance = new BrainInstance(this.mDriver, windowHandle);
 		instance.initialize();
 		final String id = instance.getId();
+
+		if (id == null) {
+			// Instance is invalid, throw it away
+			instance.shutdown();
+			this.mWindowHandles.remove(windowHandle);
+
+			this.mLogger.logError("Instance can not be created since id is null: " + id);
+			HttpUtil.sendError(EHttpStatus.INTERNAL_SERVER_ERROR, clientSocket);
+			return;
+		}
+
 		this.mIdToBrainInstance.put(id, instance);
 
 		this.mLogger.logInfo("Created instance: " + id);
-
 		HttpUtil.sendHttpAnswer(id, EHttpContentType.TEXT, EHttpStatus.OK, clientSocket);
 	}
 
@@ -361,11 +388,12 @@ public final class Service extends Thread {
 		final BrainInstance instance = this.mIdToBrainInstance.get(id);
 		String latestAnswer = instance.getLatestAnswer();
 		if (latestAnswer == null) {
-			latestAnswer = "";
+			this.mLogger.logInfo("Get for " + id + " has returned no answer.");
+			HttpUtil.sendHttpAnswer(EHttpContentType.TEXT, EHttpStatus.NO_CONTENT, clientSocket);
+			return;
 		}
 
 		this.mLogger.logInfo("Get for " + id + ": " + latestAnswer);
-
 		HttpUtil.sendHttpAnswer(latestAnswer, EHttpContentType.TEXT, EHttpStatus.OK, clientSocket);
 	}
 
@@ -403,9 +431,7 @@ public final class Service extends Thread {
 			HttpUtil.sendError(EHttpStatus.BAD_REQUEST, clientSocket);
 			return;
 		}
-		final String message = messageMatcher.group(1);
-
-		// TODO Decode HTML entities in message
+		final String message = HttpUtil.decodeUrlToUtf8(messageMatcher.group(1));
 
 		if (!this.mIdToBrainInstance.containsKey(id)) {
 			HttpUtil.sendError(EHttpStatus.UNPROCESSABLE_ENTITY, clientSocket);
@@ -433,55 +459,61 @@ public final class Service extends Thread {
 	 * @throws WindowHandleNotFoundException
 	 *             If a window handle could not be found
 	 */
-	private void serveRequest(final String request, final Socket clientSocket)
-			throws IOException, WindowHandleNotFoundException {
-		// Reject the request if empty
-		if (request == null || request.trim().length() <= 0) {
-			HttpUtil.sendError(EHttpStatus.BAD_REQUEST, clientSocket);
-			return;
+	private void serveRequest(final String request, final Socket clientSocket) throws IOException {
+		try {
+			// Reject the request if empty
+			if (request == null || request.trim().length() <= 0) {
+				HttpUtil.sendError(EHttpStatus.BAD_REQUEST, clientSocket);
+				return;
+			}
+
+			// Reject the request if not a GET request
+			final Pattern requestPattern = Pattern.compile(GET_REQUEST_PATTERN);
+			final Matcher requestMatcher = requestPattern.matcher(request);
+			if (!requestMatcher.matches()) {
+				HttpUtil.sendError(EHttpStatus.BAD_REQUEST, clientSocket);
+				return;
+			}
+
+			// Strip the content of the GET request
+			final String requestContent = requestMatcher.group(1);
+
+			// Serve create requests
+			final boolean isCreateRequest = requestContent.startsWith(CREATE_REQUEST);
+			if (isCreateRequest) {
+				serveCreateRequest(clientSocket);
+				return;
+			}
+
+			// Serve post message requests
+			final boolean isPostMessageRequest = requestContent.startsWith(POST_MESSAGE_REQUEST);
+			if (isPostMessageRequest) {
+				servePostMessageRequest(requestContent, clientSocket);
+				return;
+			}
+
+			// Serve get message requests
+			final boolean isGetMessageRequest = requestContent.startsWith(GET_MESSAGE_REQUEST);
+			if (isGetMessageRequest) {
+				serveGetMessageRequest(requestContent, clientSocket);
+				return;
+			}
+
+			// Serve shutdown requests
+			final boolean isShutdownRequest = requestContent.startsWith(SHUTDOWN_REQUEST);
+			if (isShutdownRequest) {
+				serveShutdownRequest(requestContent, clientSocket);
+				return;
+			}
+
+			// Request type not supported
+			HttpUtil.sendError(EHttpStatus.NOT_IMPLEMENTED, clientSocket);
+		} catch (final WindowHandleNotFoundException | StaleElementReferenceException | TimeoutException
+				| NoSuchElementException | NoSuchFrameException | UnexpectedUnsupportedEncodingException e) {
+			// Log the error and reject the request
+			this.mLogger.logError("Server error while serving request: " + LoggerUtil.getStackTrace(e));
+			HttpUtil.sendError(EHttpStatus.INTERNAL_SERVER_ERROR, clientSocket);
 		}
-
-		// Reject the request if not a GET request
-		final Pattern requestPattern = Pattern.compile(GET_REQUEST_PATTERN);
-		final Matcher requestMatcher = requestPattern.matcher(request);
-		if (!requestMatcher.matches()) {
-			HttpUtil.sendError(EHttpStatus.BAD_REQUEST, clientSocket);
-			return;
-		}
-
-		// Strip the content of the GET request
-		final String requestContent = requestMatcher.group(1);
-
-		// Serve create requests
-		final boolean isCreateRequest = requestContent.startsWith(CREATE_REQUEST);
-		if (isCreateRequest) {
-			serveCreateRequest(clientSocket);
-			return;
-		}
-
-		// Serve post message requests
-		final boolean isPostMessageRequest = requestContent.startsWith(POST_MESSAGE_REQUEST);
-		if (isPostMessageRequest) {
-			servePostMessageRequest(requestContent, clientSocket);
-			return;
-		}
-
-		// Serve get message requests
-		final boolean isGetMessageRequest = requestContent.startsWith(GET_MESSAGE_REQUEST);
-		if (isGetMessageRequest) {
-			serveGetMessageRequest(requestContent, clientSocket);
-			return;
-		}
-
-		// Serve shutdown requests
-		final boolean isShutdownRequest = requestContent.startsWith(SHUTDOWN_REQUEST);
-		if (isShutdownRequest) {
-			serveShutdownRequest(requestContent, clientSocket);
-			return;
-		}
-
-		// Request type not supported
-		HttpUtil.sendError(EHttpStatus.NOT_IMPLEMENTED, clientSocket);
 	}
 
 	/**

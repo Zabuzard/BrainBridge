@@ -1,6 +1,16 @@
 package de.zabuza.brainbridge.service;
 
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.openqa.selenium.Keys;
+import org.openqa.selenium.TimeoutException;
 import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.WebElement;
+
+import de.zabuza.brainbridge.webdriver.wait.CSSSelectorPresenceWait;
+import de.zabuza.brainbridge.webdriver.wait.FramePresenceWait;
+import de.zabuza.brainbridge.webdriver.wait.NamePresenceWait;
 
 /**
  * Instance for an active chat with brain. Once created use
@@ -13,6 +23,44 @@ import org.openqa.selenium.WebDriver;
  *
  */
 public final class BrainInstance {
+	/**
+	 * The pattern every answer from the chat service matches. The message
+	 * content can be accessed by group 1.
+	 */
+	private static final String CHAT_ANSWER_PATTERN = "^.*<font color=\"(?:#\\d{3,6}|[A-Za-z]+)\"><b>Brain\\s*:\\s*<\\/b><\\/font>(.+)$";
+	/**
+	 * Name of the frame that contains the chat input.
+	 */
+	private final static String CHAT_INPUT_FRAME_NAME = "frin";
+	/**
+	 * The name of the input element that allows inputting chat messages.
+	 */
+	private static final String CHAT_INPUT_NAME = "editMsg";
+	/**
+	 * Pattern that matches line separators in the chat content.
+	 */
+	private static final String CHAT_LINE_SEPARATOR = "<br[\\s\\/]*>";
+	/**
+	 * Name of the frame that contains the chat output.
+	 */
+	private final static String CHAT_OUTPUT_FRAME_NAME = "frout";
+	/**
+	 * The URL to the chat service.
+	 */
+	private final static String CHAT_SERVICE = "http://www.thebot.de/";
+	/**
+	 * The pattern which matches the id argument in an URL. It can be accessed
+	 * by the group 1.
+	 */
+	private static final String ID_PATTERN = "(?:^|.+&|.+\\?)id=([A-Za-z0-9]+)(?:$|&.+)";
+	/**
+	 * Class of the anchor that logs in to the chat service.
+	 */
+	private final static String LOGIN_ANCHOR = "a.btnAls_Gast";
+	/**
+	 * Class of the anchor that logs out from the chat service.
+	 */
+	private final static String LOGOUT_ANCHOR = "a.btnChat_beenden";
 	/**
 	 * The driver to use for accessing browser contents.
 	 */
@@ -77,11 +125,24 @@ public final class BrainInstance {
 	 */
 	public String getLatestAnswer() {
 		updateLastUsage();
+		switchToWindow();
+		switchToFrame(CHAT_OUTPUT_FRAME_NAME);
+		final String pageContent = this.mDriver.getPageSource();
 
-		// TODO Implement
+		final String[] lines = pageContent.split(CHAT_LINE_SEPARATOR);
+		// Latest message is always the second to last entry
+		if (lines.length < 2) {
+			return null;
+		}
+		final String latestMessage = lines[lines.length - 2].trim();
 
-		// TODO Remove dummy
-		return "Hi there!";
+		final Pattern answerPattern = Pattern.compile(CHAT_ANSWER_PATTERN);
+		final Matcher answerMatcher = answerPattern.matcher(latestMessage);
+		if (answerMatcher.matches()) {
+			return answerMatcher.group(1);
+		}
+
+		return null;
 	}
 
 	/**
@@ -97,10 +158,23 @@ public final class BrainInstance {
 	 * Initializes the instance. Call this method prior to chat interaction.
 	 */
 	public void initialize() {
-		// TODO Implement
+		switchToWindow();
+		this.mDriver.get(CHAT_SERVICE);
+		final WebElement loginAnchor = new CSSSelectorPresenceWait(this.mDriver, LOGIN_ANCHOR).waitUntilCondition();
+		try {
+			loginAnchor.click();
+		} catch (final TimeoutException e) {
+			// Ignore the error as it comes from the aborted page load
+		}
 
-		// TODO Remove dummy
-		this.mId = String.valueOf((int) Math.floor((Math.random() * 100_000) + 1));
+		final WebElement outputFrame = new FramePresenceWait(this.mDriver, CHAT_OUTPUT_FRAME_NAME).waitUntilCondition();
+		final String frameSrc = outputFrame.getAttribute("src");
+
+		final Pattern idPattern = Pattern.compile(ID_PATTERN);
+		final Matcher idMatcher = idPattern.matcher(frameSrc);
+		if (idMatcher.matches()) {
+			this.mId = idMatcher.group(1);
+		}
 	}
 
 	/**
@@ -111,15 +185,45 @@ public final class BrainInstance {
 	 */
 	public void postMessage(final String message) {
 		updateLastUsage();
+		switchToWindow();
+		switchToFrame(CHAT_INPUT_FRAME_NAME);
 
-		// TODO Implement
+		final WebElement input = new NamePresenceWait(this.mDriver, CHAT_INPUT_NAME).waitUntilCondition();
+		input.sendKeys(message);
+		input.sendKeys(Keys.ENTER);
 	}
 
 	/**
 	 * Shuts this instance down and frees all used resources.
 	 */
 	public void shutdown() {
-		// TODO Implement;
+		switchToWindow();
+		switchToFrame(CHAT_INPUT_FRAME_NAME);
+
+		final WebElement logoutAnchor = new CSSSelectorPresenceWait(this.mDriver, LOGOUT_ANCHOR).waitUntilCondition();
+		logoutAnchor.click();
+
+		this.mDriver.close();
+	}
+
+	/**
+	 * Switches the context of the driver instance to the frame with the given
+	 * name. The frame is always searched in the context of the whole document
+	 * instead of the current set context.
+	 * 
+	 * @param name
+	 *            The name of the frame to switch to
+	 */
+	private void switchToFrame(final String name) {
+		this.mDriver.switchTo().parentFrame();
+		this.mDriver.switchTo().frame(name);
+	}
+
+	/**
+	 * Switches the driver instance to the window of this chat instance.
+	 */
+	private void switchToWindow() {
+		this.mDriver.switchTo().window(this.mWindowHandle);
 	}
 
 	/**
