@@ -79,7 +79,9 @@ public final class BrainInstance {
 		updateLastUsage();
 
 		// TODO Implement
-		return null;
+
+		// TODO Remove dummy
+		return "Hi there!";
 	}
 
 	/**
@@ -96,6 +98,9 @@ public final class BrainInstance {
 	 */
 	public void initialize() {
 		// TODO Implement
+
+		// TODO Remove dummy
+		this.mId = String.valueOf((int) Math.floor((Math.random() * 100_000) + 1));
 	}
 
 	/**

@@ -36,5 +36,15 @@ public enum EHttpStatus {
 	/**
 	 * If everything was valid and went okay.
 	 */
-	OK
+	OK,
+	/**
+	 * If the service is currently not available. The client should try it later
+	 * again.
+	 */
+	SERVICE_UNAVAILABLE,
+	/**
+	 * If a request could not be served because it contains invalid data though
+	 * it is in a correct format.
+	 */
+	UNPROCESSABLE_ENTITY
 }

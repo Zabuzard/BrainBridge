@@ -23,6 +23,7 @@ import de.zabuza.brainbridge.exceptions.WindowHandleNotFoundException;
 import de.zabuza.brainbridge.logging.ILogger;
 import de.zabuza.brainbridge.logging.LoggerFactory;
 import de.zabuza.brainbridge.logging.LoggerUtil;
+import de.zabuza.brainbridge.webdriver.IWrapsWebDriver;
 
 /**
  * Actual service thread of the tool. Call {@link #start()} to start the service
@@ -47,7 +48,7 @@ public final class Service extends Thread {
 	 * The pattern which matches the message argument in a request. It can be
 	 * accessed by the group 1.
 	 */
-	private static final String ARGUMENT_MESSAGE_PATTERN = "(?:^|.+&)msg=.+(?:$|&.+)";
+	private static final String ARGUMENT_MESSAGE_PATTERN = "(?:^|.+&)msg=(.+)(?:$|&.+)";
 	/**
 	 * The keyword which every create request begins with.
 	 */
@@ -61,6 +62,11 @@ public final class Service extends Thread {
 	 * the GET request.
 	 */
 	private static final String GET_REQUEST_PATTERN = "GET (.+) HTTP/?[\\d\\.]*";
+	/**
+	 * The maximal amount of instances that can be served at the same time. If
+	 * the limit is reached incoming create requests will be rejected.
+	 */
+	private final static int MAX_INSTANCES = 20;
 	/**
 	 * The keyword which every post message request begins with.
 	 */
@@ -78,6 +84,7 @@ public final class Service extends Thread {
 	 * The time in milliseconds to wait for a client to connect.
 	 */
 	private final static int SOCKET_WAIT_TIMEOUT = 10_000;
+
 	/**
 	 * Internal flag whether the service should run or not. If set to
 	 * <tt>false</tt> the service will not enter the next iteration of its life
@@ -263,6 +270,17 @@ public final class Service extends Thread {
 	 *             If an I/O-Exception occurs
 	 */
 	private void serveCreateRequest(final Socket clientSocket) throws WindowHandleNotFoundException, IOException {
+		if (this.mLogger.isDebugEnabled()) {
+			this.mLogger.logDebug("Serving create request.");
+		}
+
+		// Check if limit is reached
+		if (this.mIdToBrainInstance.size() >= MAX_INSTANCES) {
+			HttpUtil.sendError(EHttpStatus.SERVICE_UNAVAILABLE, clientSocket);
+			this.mLogger.logInfo("Rejected create request, limit reached.");
+			return;
+		}
+
 		// Create a window handle for a new brain instance
 		String windowHandle = null;
 		if (this.mWindowHandles.isEmpty()) {
@@ -271,10 +289,15 @@ public final class Service extends Thread {
 			this.mWindowHandles.add(windowHandle);
 		} else {
 			// Create a new blank window
-			if (!(this.mDriver instanceof JavascriptExecutor)) {
-				throw new DriverNewWindowUnsupportedException(this.mDriver);
+			WebDriver rawDriver = this.mDriver;
+			while (rawDriver instanceof IWrapsWebDriver) {
+				rawDriver = ((IWrapsWebDriver) rawDriver).getRawDriver();
 			}
-			final JavascriptExecutor executor = (JavascriptExecutor) this.mDriver;
+
+			if (!(rawDriver instanceof JavascriptExecutor)) {
+				throw new DriverNewWindowUnsupportedException(rawDriver);
+			}
+			final JavascriptExecutor executor = (JavascriptExecutor) rawDriver;
 			executor.executeScript("window.open();");
 
 			// Find the window
@@ -297,6 +320,8 @@ public final class Service extends Thread {
 		final String id = instance.getId();
 		this.mIdToBrainInstance.put(id, instance);
 
+		this.mLogger.logInfo("Created instance: " + id);
+
 		HttpUtil.sendHttpAnswer(id, EHttpContentType.TEXT, EHttpStatus.OK, clientSocket);
 	}
 
@@ -311,6 +336,10 @@ public final class Service extends Thread {
 	 *             If an I/O-Exception occurs
 	 */
 	private void serveGetMessageRequest(final String requestContent, final Socket clientSocket) throws IOException {
+		if (this.mLogger.isDebugEnabled()) {
+			this.mLogger.logDebug("Serving get message request.");
+		}
+
 		// Extract the arguments
 		final String arguments = requestContent.substring(GET_MESSAGE_REQUEST.length());
 
@@ -319,11 +348,13 @@ public final class Service extends Thread {
 		final Matcher idMatcher = idPattern.matcher(arguments);
 		if (!idMatcher.matches()) {
 			HttpUtil.sendError(EHttpStatus.BAD_REQUEST, clientSocket);
+			return;
 		}
 		final String id = idMatcher.group(1);
 
 		if (!this.mIdToBrainInstance.containsKey(id)) {
-			HttpUtil.sendError(EHttpStatus.NOT_FOUND, clientSocket);
+			HttpUtil.sendError(EHttpStatus.UNPROCESSABLE_ENTITY, clientSocket);
+			return;
 		}
 
 		// Get the brain instance corresponding to the requested id
@@ -332,6 +363,8 @@ public final class Service extends Thread {
 		if (latestAnswer == null) {
 			latestAnswer = "";
 		}
+
+		this.mLogger.logInfo("Get for " + id + ": " + latestAnswer);
 
 		HttpUtil.sendHttpAnswer(latestAnswer, EHttpContentType.TEXT, EHttpStatus.OK, clientSocket);
 	}
@@ -347,6 +380,10 @@ public final class Service extends Thread {
 	 *             If an I/O-Exception occurs
 	 */
 	private void servePostMessageRequest(final String requestContent, final Socket clientSocket) throws IOException {
+		if (this.mLogger.isDebugEnabled()) {
+			this.mLogger.logDebug("Serving post message request.");
+		}
+
 		// Extract the arguments
 		final String arguments = requestContent.substring(POST_MESSAGE_REQUEST.length());
 
@@ -355,6 +392,7 @@ public final class Service extends Thread {
 		final Matcher idMatcher = idPattern.matcher(arguments);
 		if (!idMatcher.matches()) {
 			HttpUtil.sendError(EHttpStatus.BAD_REQUEST, clientSocket);
+			return;
 		}
 		final String id = idMatcher.group(1);
 
@@ -363,16 +401,22 @@ public final class Service extends Thread {
 		final Matcher messageMatcher = messagePattern.matcher(arguments);
 		if (!messageMatcher.matches()) {
 			HttpUtil.sendError(EHttpStatus.BAD_REQUEST, clientSocket);
+			return;
 		}
 		final String message = messageMatcher.group(1);
 
+		// TODO Decode HTML entities in message
+
 		if (!this.mIdToBrainInstance.containsKey(id)) {
-			HttpUtil.sendError(EHttpStatus.NOT_FOUND, clientSocket);
+			HttpUtil.sendError(EHttpStatus.UNPROCESSABLE_ENTITY, clientSocket);
+			return;
 		}
 
 		// Get the brain instance corresponding to the requested id
 		final BrainInstance instance = this.mIdToBrainInstance.get(id);
 		instance.postMessage(message);
+
+		this.mLogger.logInfo("Post for " + id + ": " + message);
 
 		HttpUtil.sendHttpAnswer(EHttpContentType.TEXT, EHttpStatus.NO_CONTENT, clientSocket);
 	}
@@ -451,6 +495,10 @@ public final class Service extends Thread {
 	 *             If an I/O-Exception occurs
 	 */
 	private void serveShutdownRequest(final String requestContent, final Socket clientSocket) throws IOException {
+		if (this.mLogger.isDebugEnabled()) {
+			this.mLogger.logDebug("Serving shutdown request.");
+		}
+
 		// Extract the arguments
 		final String arguments = requestContent.substring(SHUTDOWN_REQUEST.length());
 
@@ -459,11 +507,13 @@ public final class Service extends Thread {
 		final Matcher idMatcher = idPattern.matcher(arguments);
 		if (!idMatcher.matches()) {
 			HttpUtil.sendError(EHttpStatus.BAD_REQUEST, clientSocket);
+			return;
 		}
 		final String id = idMatcher.group(1);
 
 		if (!this.mIdToBrainInstance.containsKey(id)) {
-			HttpUtil.sendError(EHttpStatus.NOT_FOUND, clientSocket);
+			HttpUtil.sendError(EHttpStatus.UNPROCESSABLE_ENTITY, clientSocket);
+			return;
 		}
 
 		// Get the brain instance corresponding to the requested id
@@ -473,6 +523,8 @@ public final class Service extends Thread {
 		instance.shutdown();
 		this.mWindowHandles.remove(windowHandle);
 		this.mIdToBrainInstance.remove(id);
+
+		this.mLogger.logInfo("Shutdown instance: " + id);
 
 		HttpUtil.sendHttpAnswer(EHttpContentType.TEXT, EHttpStatus.NO_CONTENT, clientSocket);
 	}

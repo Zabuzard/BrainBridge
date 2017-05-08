@@ -37,7 +37,7 @@ public final class HttpUtil {
 	 *             If an I/O-Exception occurred
 	 */
 	public static void sendError(final EHttpStatus status, final Socket client) throws IOException {
-		sendHttpAnswer(EHttpContentType.TEXT, status, client);
+		sendHttpAnswer(status.toString(), EHttpContentType.TEXT, status, client);
 	}
 
 	/**
@@ -112,10 +112,14 @@ public final class HttpUtil {
 			statusNumber = 403;
 		} else if (statusToUse == EHttpStatus.NOT_FOUND) {
 			statusNumber = 404;
+		} else if (statusToUse == EHttpStatus.UNPROCESSABLE_ENTITY) {
+			statusNumber = 422;
 		} else if (statusToUse == EHttpStatus.INTERNAL_SERVER_ERROR) {
 			statusNumber = 500;
 		} else if (statusToUse == EHttpStatus.NOT_IMPLEMENTED) {
 			statusNumber = 501;
+		} else if (statusToUse == EHttpStatus.SERVICE_UNAVAILABLE) {
+			statusNumber = 503;
 		} else {
 			statusToUse = EHttpStatus.INTERNAL_SERVER_ERROR;
 			statusNumber = 500;
