@@ -4,8 +4,12 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URL;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedList;
 import java.util.List;
+
+import org.apache.commons.lang3.StringEscapeUtils;
 
 /**
  * Client-side API for the BrainBridge service. It interacts with the
@@ -44,6 +48,10 @@ public final class BrainBridgeAPI {
 	 */
 	private static final String SHUTDOWN_REQUEST = "/shutdown?";
 	/**
+	 * The charset to use for encoding and decoding text.
+	 */
+	private static final Charset TEXT_CHARSET = StandardCharsets.UTF_8;
+	/**
 	 * Delimiter between an URL and a port.
 	 */
 	private static final String URL_PORT_DELIMITER = ":";
@@ -58,7 +66,8 @@ public final class BrainBridgeAPI {
 	 *             If an I/O-Exception occurs
 	 */
 	private static List<String> getWebContent(final String url) throws IOException {
-		try (final BufferedReader site = new BufferedReader(new InputStreamReader(new URL(url).openStream()));) {
+		try (final BufferedReader site = new BufferedReader(
+				new InputStreamReader(new URL(url).openStream(), TEXT_CHARSET));) {
 			final List<String> content = new LinkedList<>();
 			while (site.ready()) {
 				final String line = site.readLine();
@@ -110,7 +119,7 @@ public final class BrainBridgeAPI {
 			if (firstLine.trim().isEmpty()) {
 				return null;
 			}
-			return firstLine;
+			return StringEscapeUtils.unescapeHtml4(firstLine);
 		} catch (final IOException e) {
 			// Ignore the exception and return null
 			return null;
@@ -139,7 +148,7 @@ public final class BrainBridgeAPI {
 			if (firstLine.trim().isEmpty()) {
 				return null;
 			}
-			return firstLine;
+			return StringEscapeUtils.unescapeHtml4(firstLine);
 		} catch (final IOException e) {
 			// Ignore the exception and return null
 			return null;
