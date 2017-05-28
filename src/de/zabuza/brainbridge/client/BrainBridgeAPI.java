@@ -171,8 +171,6 @@ public final class BrainBridgeAPI {
 		String encodedMessage;
 		try {
 			encodedMessage = URLEncoder.encode(message, TEXT_CHARSET.name());
-			// TODO Remove debug print
-			System.out.println("Trying with " + encodedMessage);
 		} catch (final UnsupportedEncodingException e) {
 			// Re-throw new exception
 			throw new UnexpectedUnsupportedEncodingException(e);
