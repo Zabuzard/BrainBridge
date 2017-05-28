@@ -21,6 +21,7 @@ import org.openqa.selenium.NoSuchFrameException;
 import org.openqa.selenium.StaleElementReferenceException;
 import org.openqa.selenium.TimeoutException;
 import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.WebDriverException;
 
 import de.zabuza.brainbridge.server.BrainBridge;
 import de.zabuza.brainbridge.server.exceptions.DriverNewWindowUnsupportedException;
@@ -190,8 +191,12 @@ public final class Service extends Thread {
 		try {
 			this.mServerSocket = new ServerSocket(this.mPort);
 			this.mServerSocket.setSoTimeout(SOCKET_WAIT_TIMEOUT);
-
-			this.mDriver.manage().timeouts().pageLoadTimeout(DRIVER_PAGE_LOAD_TIMEOUT, TimeUnit.SECONDS);
+			try {
+				this.mDriver.manage().timeouts().pageLoadTimeout(DRIVER_PAGE_LOAD_TIMEOUT, TimeUnit.SECONDS);
+			} catch (final WebDriverException e) {
+				// Page load timeouts are not supported by the driver, simply
+				// ignore it and try to continue without
+			}
 
 			this.mControlWindowHandle = this.mDriver.getWindowHandle();
 			this.mWindowHandles.add(this.mControlWindowHandle);
