@@ -220,7 +220,7 @@ public final class Service extends Thread {
 				// Wait for a client to connect
 				try (final Socket clientSocket = this.mServerSocket.accept();
 						final BufferedReader br = new BufferedReader(
-								new InputStreamReader(clientSocket.getInputStream()))) {
+								new InputStreamReader(clientSocket.getInputStream(), HttpUtil.TEXT_CHARSET))) {
 					final InetAddress clientIp = clientSocket.getInetAddress();
 					this.mLogger.logInfo("Connected with " + clientIp);
 

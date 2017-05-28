@@ -20,14 +20,14 @@ import de.zabuza.brainbridge.server.exceptions.UnexpectedUnsupportedEncodingExce
 public final class HttpUtil {
 
 	/**
+	 * The charset to use for encoding and decoding text.
+	 */
+	public static final Charset TEXT_CHARSET = StandardCharsets.UTF_8;
+
+	/**
 	 * Constant for an empty answer text.
 	 */
 	private static final String EMPTY_ANSWER = "";
-
-	/**
-	 * The charset to use for encoding and decoding text.
-	 */
-	private static final Charset TEXT_CHARSET = StandardCharsets.UTF_8;
 
 	/**
 	 * Decodes the given encoded URL into an UTF-8 text.

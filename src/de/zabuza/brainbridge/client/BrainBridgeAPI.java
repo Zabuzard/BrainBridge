@@ -3,13 +3,17 @@ package de.zabuza.brainbridge.client;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.UnsupportedEncodingException;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedList;
 import java.util.List;
 
 import org.apache.commons.lang3.StringEscapeUtils;
+
+import de.zabuza.brainbridge.client.exceptions.UnexpectedUnsupportedEncodingException;
 
 /**
  * Client-side API for the BrainBridge service. It interacts with the
@@ -164,8 +168,17 @@ public final class BrainBridgeAPI {
 	 *            The message to post
 	 */
 	public void postMessage(final String id, final String message) {
+		String encodedMessage;
+		try {
+			encodedMessage = URLEncoder.encode(message, TEXT_CHARSET.name());
+			// TODO Remove debug print
+			System.out.println("Trying with " + encodedMessage);
+		} catch (final UnsupportedEncodingException e) {
+			// Re-throw new exception
+			throw new UnexpectedUnsupportedEncodingException(e);
+		}
 		final String query = this.mServiceUrl + POST_MESSAGE_REQUEST + ID_PARAMETER + id + PARAMETER_SEPARATOR
-				+ MESSAGE_PARAMETER + message;
+				+ MESSAGE_PARAMETER + encodedMessage;
 		try {
 			// Simply open the web page, we are not interested in its content
 			getWebContent(query);
