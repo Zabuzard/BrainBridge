@@ -391,7 +391,7 @@ public final class Service extends Thread {
 
 		// Get the brain instance corresponding to the requested id
 		final BrainInstance instance = this.mIdToBrainInstance.get(id);
-		String latestAnswer = instance.getLatestAnswer();
+		final String latestAnswer = instance.getLatestAnswer();
 		if (latestAnswer == null) {
 			this.mLogger.logInfo("Get for " + id + " has returned no answer.");
 			HttpUtil.sendHttpAnswer(EHttpContentType.TEXT, EHttpStatus.NO_CONTENT, clientSocket);
