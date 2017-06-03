@@ -17,7 +17,7 @@ public class LinkTextPresenceWait extends AConditionalWait<WebElement> {
 	/**
 	 * Condition to wait for.
 	 */
-	private final ExpectedCondition<WebElement> m_Condition;
+	private final ExpectedCondition<WebElement> mCondition;
 
 	/**
 	 * Creates a new instance of this object using a given web driver and CSS
@@ -31,7 +31,7 @@ public class LinkTextPresenceWait extends AConditionalWait<WebElement> {
 	 */
 	public LinkTextPresenceWait(final WebDriver driver, final String partialLinkText) {
 		super(driver);
-		this.m_Condition = ExpectedConditions.presenceOfElementLocated(By.partialLinkText(partialLinkText));
+		this.mCondition = ExpectedConditions.presenceOfElementLocated(By.partialLinkText(partialLinkText));
 	}
 
 	/*
@@ -41,6 +41,6 @@ public class LinkTextPresenceWait extends AConditionalWait<WebElement> {
 	 */
 	@Override
 	protected ExpectedCondition<WebElement> getCondition() {
-		return this.m_Condition;
+		return this.mCondition;
 	}
 }

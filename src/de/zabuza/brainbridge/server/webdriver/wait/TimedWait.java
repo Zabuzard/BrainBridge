@@ -26,7 +26,7 @@ public class TimedWait extends AConditionalWait<Boolean> {
 	/**
 	 * Condition to wait for.
 	 */
-	private final ExpectedCondition<Boolean> m_Condition;
+	private final ExpectedCondition<Boolean> mCondition;
 
 	/**
 	 * Creates a new instance of this object with a given web driver and time to
@@ -39,7 +39,7 @@ public class TimedWait extends AConditionalWait<Boolean> {
 	 */
 	public TimedWait(final WebDriver driver, final long timeToWait) {
 		super(driver, (timeToWait / SECONDS_TO_MILLIS) + TIMEOUT_OFFSET);
-		this.m_Condition = new TimedCondition(timeToWait);
+		this.mCondition = new TimedCondition(timeToWait);
 	}
 
 	/*
@@ -49,6 +49,6 @@ public class TimedWait extends AConditionalWait<Boolean> {
 	 */
 	@Override
 	protected ExpectedCondition<Boolean> getCondition() {
-		return this.m_Condition;
+		return this.mCondition;
 	}
 }

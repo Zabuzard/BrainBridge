@@ -35,31 +35,31 @@ public final class StaleRefresherWebElement implements WebElement {
 	/**
 	 * Context of the element to find itself again if staled
 	 */
-	private final By m_Context;
+	private final By mContext;
 	/**
 	 * Web element to wrap for staled state handling.
 	 */
-	private volatile WebElement m_Element;
+	private volatile WebElement mElement;
 	/**
 	 * Tag of the underlying element to wrap.
 	 */
-	private final String m_ElementTag;
+	private final String mElementTag;
 	/**
 	 * The position of this element if it occurs in a list of elements, a
 	 * negative value else.
 	 */
-	private final int m_Index;
+	private final int mIndex;
 	/**
 	 * The parent element of this element as driver if used in its context, null
 	 * else.
 	 */
-	private final WebDriver m_ParentAsDriver;
+	private final WebDriver mParentAsDriver;
 
 	/**
 	 * The parent element of this element as element if used in its context,
 	 * null else.
 	 */
-	private final WebElement m_ParentAsElement;
+	private final WebElement mParentAsElement;
 
 	/**
 	 * Creates a new instance of this object with a given web element object and
@@ -153,12 +153,12 @@ public final class StaleRefresherWebElement implements WebElement {
 	 */
 	private StaleRefresherWebElement(final WebElement element, final By context, final WebDriver parentAsDriver,
 			final WebElement parentAsElement, final int index) {
-		this.m_Element = element;
-		this.m_ElementTag = this.m_Element.getTagName();
-		this.m_Context = context;
-		this.m_ParentAsDriver = parentAsDriver;
-		this.m_ParentAsElement = parentAsElement;
-		this.m_Index = index;
+		this.mElement = element;
+		this.mElementTag = this.mElement.getTagName();
+		this.mContext = context;
+		this.mParentAsDriver = parentAsDriver;
+		this.mParentAsElement = parentAsElement;
+		this.mIndex = index;
 	}
 
 	/*
@@ -169,7 +169,7 @@ public final class StaleRefresherWebElement implements WebElement {
 	@Override
 	public void clear() {
 		ensureReferenceNotStaled();
-		this.m_Element.clear();
+		this.mElement.clear();
 	}
 
 	/*
@@ -180,7 +180,7 @@ public final class StaleRefresherWebElement implements WebElement {
 	@Override
 	public void click() {
 		ensureReferenceNotStaled();
-		this.m_Element.click();
+		this.mElement.click();
 	}
 
 	/*
@@ -191,7 +191,7 @@ public final class StaleRefresherWebElement implements WebElement {
 	@Override
 	public WebElement findElement(final By by) {
 		ensureReferenceNotStaled();
-		return new StaleRefresherWebElement(this.m_Element.findElement(by), by, this.m_Element);
+		return new StaleRefresherWebElement(this.mElement.findElement(by), by, this.mElement);
 	}
 
 	/*
@@ -202,11 +202,11 @@ public final class StaleRefresherWebElement implements WebElement {
 	@Override
 	public List<WebElement> findElements(final By by) {
 		ensureReferenceNotStaled();
-		final List<WebElement> elements = this.m_Element.findElements(by);
+		final List<WebElement> elements = this.mElement.findElements(by);
 		final List<WebElement> staleRefresherElements = new LinkedList<>();
 		int i = 0;
 		for (final WebElement element : elements) {
-			staleRefresherElements.add(new StaleRefresherWebElement(element, by, this.m_Element, i));
+			staleRefresherElements.add(new StaleRefresherWebElement(element, by, this.mElement, i));
 			i++;
 		}
 
@@ -221,7 +221,7 @@ public final class StaleRefresherWebElement implements WebElement {
 	@Override
 	public String getAttribute(final String name) {
 		ensureReferenceNotStaled();
-		return this.m_Element.getAttribute(name);
+		return this.mElement.getAttribute(name);
 	}
 
 	/*
@@ -232,7 +232,7 @@ public final class StaleRefresherWebElement implements WebElement {
 	@Override
 	public String getCssValue(final String propertyName) {
 		ensureReferenceNotStaled();
-		return this.m_Element.getCssValue(propertyName);
+		return this.mElement.getCssValue(propertyName);
 	}
 
 	/*
@@ -243,7 +243,7 @@ public final class StaleRefresherWebElement implements WebElement {
 	@Override
 	public Point getLocation() {
 		ensureReferenceNotStaled();
-		return this.m_Element.getLocation();
+		return this.mElement.getLocation();
 	}
 
 	/*
@@ -254,7 +254,7 @@ public final class StaleRefresherWebElement implements WebElement {
 	@Override
 	public Rectangle getRect() {
 		ensureReferenceNotStaled();
-		return this.m_Element.getRect();
+		return this.mElement.getRect();
 	}
 
 	/*
@@ -267,7 +267,7 @@ public final class StaleRefresherWebElement implements WebElement {
 	@Override
 	public <X> X getScreenshotAs(final OutputType<X> target) throws WebDriverException {
 		ensureReferenceNotStaled();
-		return this.m_Element.getScreenshotAs(target);
+		return this.mElement.getScreenshotAs(target);
 	}
 
 	/*
@@ -278,7 +278,7 @@ public final class StaleRefresherWebElement implements WebElement {
 	@Override
 	public Dimension getSize() {
 		ensureReferenceNotStaled();
-		return this.m_Element.getSize();
+		return this.mElement.getSize();
 	}
 
 	/*
@@ -289,7 +289,7 @@ public final class StaleRefresherWebElement implements WebElement {
 	@Override
 	public String getTagName() {
 		ensureReferenceNotStaled();
-		return this.m_Element.getTagName();
+		return this.mElement.getTagName();
 	}
 
 	/*
@@ -300,7 +300,7 @@ public final class StaleRefresherWebElement implements WebElement {
 	@Override
 	public String getText() {
 		ensureReferenceNotStaled();
-		return this.m_Element.getText();
+		return this.mElement.getText();
 	}
 
 	/*
@@ -311,7 +311,7 @@ public final class StaleRefresherWebElement implements WebElement {
 	@Override
 	public boolean isDisplayed() {
 		ensureReferenceNotStaled();
-		return this.m_Element.isDisplayed();
+		return this.mElement.isDisplayed();
 	}
 
 	/*
@@ -322,7 +322,7 @@ public final class StaleRefresherWebElement implements WebElement {
 	@Override
 	public boolean isEnabled() {
 		ensureReferenceNotStaled();
-		return this.m_Element.isEnabled();
+		return this.mElement.isEnabled();
 	}
 
 	/*
@@ -333,7 +333,7 @@ public final class StaleRefresherWebElement implements WebElement {
 	@Override
 	public boolean isSelected() {
 		ensureReferenceNotStaled();
-		return this.m_Element.isSelected();
+		return this.mElement.isSelected();
 	}
 
 	/*
@@ -344,7 +344,7 @@ public final class StaleRefresherWebElement implements WebElement {
 	@Override
 	public void sendKeys(final CharSequence... keysToSend) {
 		ensureReferenceNotStaled();
-		this.m_Element.sendKeys(keysToSend);
+		this.mElement.sendKeys(keysToSend);
 	}
 
 	/*
@@ -355,7 +355,7 @@ public final class StaleRefresherWebElement implements WebElement {
 	@Override
 	public void submit() {
 		ensureReferenceNotStaled();
-		this.m_Element.submit();
+		this.mElement.submit();
 	}
 
 	/**
@@ -372,7 +372,7 @@ public final class StaleRefresherWebElement implements WebElement {
 		while (!resolvedIssue && tries < MAX_STALED_EXCHANGE_TRIES) {
 			try {
 				// Check if element is staled by provoking the exception
-				this.m_Element.getTagName();
+				this.mElement.getTagName();
 
 				// Element is not staled if exception got not thrown
 				resolvedIssue = true;
@@ -404,23 +404,23 @@ public final class StaleRefresherWebElement implements WebElement {
 	private void exchangeStaledReference() {
 		final WebElement element;
 		// Element is not contained in a list of elements
-		if (this.m_Index < 0) {
-			if (this.m_ParentAsDriver != null) {
-				element = this.m_ParentAsDriver.findElement(this.m_Context);
+		if (this.mIndex < 0) {
+			if (this.mParentAsDriver != null) {
+				element = this.mParentAsDriver.findElement(this.mContext);
 			} else {
-				element = this.m_ParentAsElement.findElement(this.m_Context);
+				element = this.mParentAsElement.findElement(this.mContext);
 			}
 		} else {
 			final List<WebElement> elements;
-			if (this.m_ParentAsDriver != null) {
-				elements = this.m_ParentAsDriver.findElements(this.m_Context);
+			if (this.mParentAsDriver != null) {
+				elements = this.mParentAsDriver.findElements(this.mContext);
 			} else {
-				elements = this.m_ParentAsElement.findElements(this.m_Context);
+				elements = this.mParentAsElement.findElements(this.mContext);
 			}
 
 			// Assume element stayed at its index
-			if (this.m_Index < elements.size()) {
-				element = elements.get(this.m_Index);
+			if (this.mIndex < elements.size()) {
+				element = elements.get(this.mIndex);
 			} else {
 				// List is to small so issue can not be resolved
 				return;
@@ -428,9 +428,9 @@ public final class StaleRefresherWebElement implements WebElement {
 		}
 
 		// Compare some attributes to ensure false positive elements
-		if (this.m_ElementTag.equals(element.getTagName())) {
+		if (this.mElementTag.equals(element.getTagName())) {
 			// Exchange the underlying reference to the element
-			this.m_Element = element;
+			this.mElement = element;
 		}
 	}
 }

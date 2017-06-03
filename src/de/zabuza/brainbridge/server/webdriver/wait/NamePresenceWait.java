@@ -17,7 +17,7 @@ public class NamePresenceWait extends AConditionalWait<WebElement> {
 	/**
 	 * Condition to wait for.
 	 */
-	private final ExpectedCondition<WebElement> m_Condition;
+	private final ExpectedCondition<WebElement> mCondition;
 
 	/**
 	 * Creates a new instance of this object using a given web driver and name.
@@ -29,7 +29,7 @@ public class NamePresenceWait extends AConditionalWait<WebElement> {
 	 */
 	public NamePresenceWait(final WebDriver driver, final String name) {
 		super(driver);
-		this.m_Condition = ExpectedConditions.presenceOfElementLocated(By.name(name));
+		this.mCondition = ExpectedConditions.presenceOfElementLocated(By.name(name));
 	}
 
 	/*
@@ -39,6 +39,6 @@ public class NamePresenceWait extends AConditionalWait<WebElement> {
 	 */
 	@Override
 	protected ExpectedCondition<WebElement> getCondition() {
-		return this.m_Condition;
+		return this.mCondition;
 	}
 }

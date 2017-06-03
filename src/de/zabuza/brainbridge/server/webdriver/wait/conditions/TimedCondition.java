@@ -14,15 +14,15 @@ public class TimedCondition implements ExpectedCondition<Boolean> {
 	/**
 	 * If the timer has started.
 	 */
-	private boolean m_ConditionActivated;
+	private boolean mConditionActivated;
 	/**
 	 * A system time stamp from that point where the timer has started.
 	 */
-	private long m_TimeStampStarted;
+	private long mTimeStampStarted;
 	/**
 	 * Time period to wait for to pass, in milliseconds.
 	 */
-	private final long m_TimeToWait;
+	private final long mTimeToWait;
 
 	/**
 	 * Creates a new instance of this object with a given time to wait. The
@@ -33,9 +33,9 @@ public class TimedCondition implements ExpectedCondition<Boolean> {
 	 *            Time period to wait for to pass, in milliseconds
 	 */
 	public TimedCondition(final long timeToWait) {
-		this.m_TimeToWait = timeToWait;
-		this.m_ConditionActivated = false;
-		this.m_TimeStampStarted = 0;
+		this.mTimeToWait = timeToWait;
+		this.mConditionActivated = false;
+		this.mTimeStampStarted = 0;
 	}
 
 	/*
@@ -45,11 +45,11 @@ public class TimedCondition implements ExpectedCondition<Boolean> {
 	 */
 	@Override
 	public Boolean apply(final WebDriver driver) {
-		if (!this.m_ConditionActivated) {
-			this.m_TimeStampStarted = System.currentTimeMillis();
-			this.m_ConditionActivated = true;
+		if (!this.mConditionActivated) {
+			this.mTimeStampStarted = System.currentTimeMillis();
+			this.mConditionActivated = true;
 		}
-		return Boolean.valueOf(System.currentTimeMillis() - this.m_TimeStampStarted > this.m_TimeToWait);
+		return Boolean.valueOf(System.currentTimeMillis() - this.mTimeStampStarted > this.mTimeToWait);
 	}
 
 }

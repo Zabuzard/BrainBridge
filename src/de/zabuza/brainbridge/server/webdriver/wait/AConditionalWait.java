@@ -26,7 +26,7 @@ public abstract class AConditionalWait<V> {
 	/**
 	 * Web driver to use for waiting.
 	 */
-	private final WebDriverWait m_Wait;
+	private final WebDriverWait mWait;
 
 	/**
 	 * Creates a new conditional wait object that uses a given web driver and
@@ -50,7 +50,7 @@ public abstract class AConditionalWait<V> {
 	 *            <tt>true</tt> until a {@link TimeoutException} is thrown.
 	 */
 	public AConditionalWait(final WebDriver driver, final long timeOutInSeconds) {
-		this.m_Wait = new WebDriverWait(driver, timeOutInSeconds);
+		this.mWait = new WebDriverWait(driver, timeOutInSeconds);
 	}
 
 	/**
@@ -60,7 +60,7 @@ public abstract class AConditionalWait<V> {
 	 * @return The object specified by {@link ExpectedCondition}.
 	 */
 	public V waitUntilCondition() {
-		return this.m_Wait.until(getCondition());
+		return this.mWait.until(getCondition());
 	}
 
 	/**
