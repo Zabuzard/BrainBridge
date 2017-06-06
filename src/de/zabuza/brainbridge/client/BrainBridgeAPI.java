@@ -24,6 +24,11 @@ import de.zabuza.brainbridge.client.exceptions.UnexpectedUnsupportedEncodingExce
  */
 public final class BrainBridgeAPI {
 	/**
+	 * If a message starts with this indicator it will be interpreted as brain
+	 * chat command.
+	 */
+	private static final String COMMAND_INDICATOR = "!";
+	/**
 	 * The keyword which every create request begins with.
 	 */
 	private static final String CREATE_REQUEST = "/create";
@@ -168,9 +173,17 @@ public final class BrainBridgeAPI {
 	 *            The message to post
 	 */
 	public void postMessage(final String id, final String message) {
+		// Remove chat commands from the message
+		final String adjustedMessage;
+		if (message.startsWith(COMMAND_INDICATOR)) {
+			adjustedMessage = message.substring(1);
+		} else {
+			adjustedMessage = message;
+		}
+
 		String encodedMessage;
 		try {
-			encodedMessage = URLEncoder.encode(message, TEXT_CHARSET.name());
+			encodedMessage = URLEncoder.encode(adjustedMessage, TEXT_CHARSET.name());
 		} catch (final UnsupportedEncodingException e) {
 			// Re-throw new exception
 			throw new UnexpectedUnsupportedEncodingException(e);
